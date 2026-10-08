@@ -1,122 +1,287 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'models/task_model.dart';
+import 'services/storage_service.dart';
+import 'theme/app_theme.dart';
+import 'widgets/add_task_dialog.dart';
+import 'widgets/bottom_dock.dart';
+import 'widgets/date_selector.dart';
+import 'widgets/productivity_card.dart';
+import 'widgets/task_card.dart';
+import 'widgets/task_detail_sheet.dart';
+import 'widgets/timeline_view.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
+
+  await StorageService.init();
+  runApp(const TaskManagerApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class TaskManagerApp extends StatelessWidget {
+  const TaskManagerApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Task & Study Manager',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.theme,
+      home: const HomeScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _HomeScreenState extends State<HomeScreen> {
+  int _currentTab = 0; // 0: Dashboard, 1: Timeline
+  DateTime _selectedDate = DateTime.now();
+  List<TaskModel> _tasks = [];
+  TaskCategory? _selectedCategoryFilter;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  void _loadTasks() {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _tasks = StorageService.getTasksForDate(_selectedDate);
     });
+  }
+
+  void _onDateChanged(DateTime date) {
+    setState(() {
+      _selectedDate = date;
+    });
+    _loadTasks();
+  }
+
+  void _openAddTaskModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AddTaskDialog(
+        initialDate: _selectedDate,
+        onTaskAdded: _loadTasks,
+      ),
+    );
+  }
+
+  void _openTaskDetail(TaskModel task) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => TaskDetailSheet(
+        task: task,
+        onTaskUpdated: _loadTasks,
+        onDelete: () async {
+          await StorageService.deleteTask(task.id);
+          _loadTasks();
+        },
+      ),
+    );
+  }
+
+  void _toggleTaskComplete(TaskModel task) async {
+    await StorageService.toggleTaskCompleted(task.id);
+    _loadTasks();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    final filteredTasks = _selectedCategoryFilter == null
+        ? _tasks
+        : _tasks.where((t) => t.category == _selectedCategoryFilter).toList();
+
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+      body: SafeArea(
+        bottom: false,
+        child: Stack(
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            // Main Content Area
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _currentTab == 0
+                    ? _buildDashboardView(filteredTasks)
+                    : _buildTimelineScheduleView(filteredTasks),
+              ),
+            ),
+
+            // Floating Navigation Dock
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24,
+              child: Center(
+                child: BottomDock(
+                  currentIndex: _currentTab,
+                  onTabSelected: (index) {
+                    setState(() {
+                      _currentTab = index;
+                    });
+                  },
+                  onAddTask: _openAddTaskModal,
+                ),
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+
+  // TAB 0: Dashboard with Productivity Matrix & Task Cards (Screen 1 style)
+  Widget _buildDashboardView(List<TaskModel> displayTasks) {
+    return ListView(
+      padding: const EdgeInsets.only(top: 16, bottom: 100),
+      children: [
+        // Productivity Header
+        ProductivityCard(
+          tasks: _tasks,
+          onProfileTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Offline Local Storage: Hive DB active')),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+
+        // Quick Category Filter Pills
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildCategoryFilterChip(null, 'ALL'),
+              const SizedBox(width: 8),
+              _buildCategoryFilterChip(TaskCategory.coding, 'CODING'),
+              const SizedBox(width: 8),
+              _buildCategoryFilterChip(TaskCategory.study, 'STUDY'),
+              const SizedBox(width: 8),
+              _buildCategoryFilterChip(TaskCategory.project, 'PROJECT'),
+              const SizedBox(width: 8),
+              _buildCategoryFilterChip(TaskCategory.review, 'REVIEW'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Tasks List
+        if (displayTasks.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.playlist_add_check_rounded, size: 48, color: AppColors.textMuted),
+                const SizedBox(height: 12),
+                const Text(
+                  'No tasks scheduled for today!',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Tap the + button below to add your first study or coding task.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _openAddTaskModal,
+                  icon: const Icon(Icons.add, color: AppColors.darkCard),
+                  label: const Text('Add Task', style: TextStyle(color: AppColors.darkCard, fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.limeAccent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...displayTasks.map((task) {
+            return TaskCard(
+              task: task,
+              onTap: () => _openTaskDetail(task),
+              onToggleComplete: () => _toggleTaskComplete(task),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _buildCategoryFilterChip(TaskCategory? category, String label) {
+    final isSelected = _selectedCategoryFilter == category;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedCategoryFilter = category;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.darkCard : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppColors.darkCard : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: isSelected ? AppColors.limeAccent : AppColors.textDark,
+          ),
+        ),
       ),
+    );
+  }
+
+  // TAB 1: Hourly Timeline Schedule View (Screen 2 style)
+  Widget _buildTimelineScheduleView(List<TaskModel> displayTasks) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        // Horizontal Date Selector
+        DateSelector(
+          selectedDate: _selectedDate,
+          onDateSelected: _onDateChanged,
+        ),
+        const SizedBox(height: 16),
+
+        // Hourly Timeline
+        Expanded(
+          child: TimelineView(
+            tasks: displayTasks,
+            onTaskTap: _openTaskDetail,
+            onToggleComplete: _toggleTaskComplete,
+          ),
+        ),
+      ],
     );
   }
 }
